@@ -29,7 +29,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;text-align:left
 .round-header-bar{display:flex;align-items:center;gap:12px;margin:22px 0 8px}.round-header-bar h3{margin:0;font-size:22px;color:var(--deep)}.round-header-bar:after{content:"";height:1px;flex:1;background:rgba(140,29,64,.14)}
 
 .cov-toolbar,.result-toolbar{display:grid;grid-template-columns:1.25fr .9fr .9fr auto;gap:10px;margin-bottom:12px}input[type=text],input[type=date],select,textarea{width:100%;background:#fffaf4;border:1px solid rgba(140,29,64,.12);color:var(--ink);padding:11px 12px;border-radius:14px;font-family:inherit}textarea{min-height:150px;resize:vertical}.utility-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;padding:11px 14px;border-radius:14px;cursor:pointer;font-weight:800}.cov-list{max-height:720px;overflow:auto;padding-right:6px}.cov-card{background:linear-gradient(180deg,#fffdf9,#f8eddf);border:1px solid rgba(140,29,64,.10);border-radius:18px;padding:14px;margin-bottom:10px}.cov-card h3{margin:0 0 6px;color:var(--deep);font-size:16px}.meta{display:flex;flex-wrap:wrap;gap:6px}.meta span{font-size:11px;color:var(--muted);border:1px solid rgba(140,29,64,.10);border-radius:999px;padding:4px 8px;background:rgba(255,255,255,.7)}
-.result-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:12px 0}.result-kpi{background:linear-gradient(180deg,#fffdf9,#f8ecd9);border:1px solid rgba(140,29,64,.10);border-radius:18px;padding:14px}.result-kpi b{display:block;font-size:28px;color:var(--deep)}.result-kpi span{font-size:12px;color:var(--muted)}.result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.unmatched-note{background:rgba(169,51,58,.08);border:1px solid rgba(169,51,58,.18);border-radius:12px;padding:10px 12px;color:var(--wrong);font-weight:800}.result-badge{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.result-badge.correct{background:rgba(47,122,89,.13);color:var(--green)}.result-badge.wrong{background:rgba(169,51,58,.12);color:var(--wrong)}.result-badge.pending{background:rgba(242,184,75,.18);color:#8a5b00}
+.result-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:12px 0}.result-kpi{background:linear-gradient(180deg,#fffdf9,#f8ecd9);border:1px solid rgba(140,29,64,.10);border-radius:18px;padding:14px}.result-kpi b{display:block;font-size:28px;color:var(--deep)}.result-kpi span{font-size:12px;color:var(--muted)}.result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.unmatched-note{background:rgba(169,51,58,.08);border:1px solid rgba(169,51,58,.18);border-radius:12px;padding:10px 12px;color:var(--wrong);font-weight:800}.nonwinner-correct{color:var(--green);font-weight:900}.nonwinner-wrong{color:var(--wrong);font-weight:900}.result-badge{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.result-badge.correct{background:rgba(47,122,89,.13);color:var(--green)}.result-badge.wrong{background:rgba(169,51,58,.12);color:var(--wrong)}.result-badge.pending{background:rgba(242,184,75,.18);color:#8a5b00}
 @media(max-width:1020px){.hero,.full,.left8,.right4{grid-column:span 12}.hero{grid-template-columns:1fr}.kpis,.result-summary{grid-template-columns:repeat(2,1fr)}.cov-toolbar,.result-toolbar{grid-template-columns:1fr}.bracket-explain,.path-strip{grid-template-columns:1fr}.path-step:not(:last-child)::after{content:"↓";right:20px;top:auto;bottom:-24px}.flow-grid{grid-template-columns:1fr}.source-pair{grid-template-columns:1fr}.arrow-block{text-align:center;transform:rotate(90deg)}}
 </style>
 </head>
@@ -73,7 +73,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;text-align:left
 
 <section class="card full">
 <h2 class="section-title">How results are counted</h2>
-<p class="section-subtitle">Group matches are checked against the predicted result: Team A win, draw, or Team B win. Knockout matches are checked by the team that advances when the scoreboard source identifies a winner. Matches that are not final yet are not included in the accuracy denominator.</p>
+<p class="section-subtitle">Group matches are checked against the predicted result: Team A win, draw, or Team B win. Knockout matches are checked by the team that advances when the scoreboard source identifies a winner. The predicted non-winner metric excludes matches where the forecast picked a draw. If the forecast picked one team to win, the other team is the predicted non-winner; the check is correct when that team does not win. Matches that are not final yet are not included.</p>
 </section>
 </div></section>
 
@@ -272,11 +272,34 @@ function renderResults(rows){
   const wrong = rows.filter(r => r.verdict === "wrong").length;
   const acc = completed ? (correct / completed * 100).toFixed(1) + "%" : "—";
 
+  const nonWinnerRows = rows.filter(r =>
+    r.completed &&
+    r.prediction &&
+    r.prediction.predicted !== "Draw" &&
+    r.actual
+  );
+
+  const nonWinnerCorrect = nonWinnerRows.filter(r => {
+    const predictedWinner = r.prediction.predicted;
+    const predictedNonWinner =
+      sameTeam(predictedWinner, r.teamA) ? r.teamB :
+      sameTeam(predictedWinner, r.teamB) ? r.teamA :
+      null;
+
+    if(!predictedNonWinner) return false;
+    if(r.actual === "Draw") return true;
+    return !sameTeam(r.actual, predictedNonWinner);
+  }).length;
+
+  const nonWinnerTotal = nonWinnerRows.length;
+  const nonWinnerAcc = nonWinnerTotal ? (nonWinnerCorrect / nonWinnerTotal * 100).toFixed(1) + "%" : "—";
+
   $("resultSummary").innerHTML = `
     <div class="result-kpi"><b>${allCompleted}</b><span>completed games loaded</span></div>
     <div class="result-kpi"><b>${completed}</b><span>completed games matched</span></div>
     <div class="result-kpi"><b>${correct}/${wrong}</b><span>right / wrong</span></div>
-    <div class="result-kpi"><b>${acc}</b><span>cumulative accuracy</span></div>
+    <div class="result-kpi"><b>${acc}</b><span>result accuracy</span></div>
+    <div class="result-kpi"><b>${nonWinnerAcc}</b><span>predicted non-winner (${nonWinnerCorrect}/${nonWinnerTotal})</span></div>
   `;
 
   const visible = rows
@@ -304,6 +327,23 @@ function renderResults(rows){
       ? `<div class="unmatched-note">This completed game was loaded but did not match a forecast pair. Team naming may differ from the forecast list.</div>`
       : "";
 
+    let nonWinnerText = "";
+    if(r.completed && pred){
+      if(pred.predicted === "Draw"){
+        nonWinnerText = `<p class="note"><b>Non-winner check:</b> excluded because the pick was a draw</p>`;
+      }else{
+        const predictedNonWinner =
+          sameTeam(pred.predicted, r.teamA) ? r.teamB :
+          sameTeam(pred.predicted, r.teamB) ? r.teamA :
+          null;
+
+        if(predictedNonWinner){
+          const nonWinnerCorrectForGame = r.actual === "Draw" || !sameTeam(r.actual, predictedNonWinner);
+          nonWinnerText = `<p class="note"><b>Predicted non-winner:</b> ${predictedNonWinner} · <span class="${nonWinnerCorrectForGame ? 'nonwinner-correct' : 'nonwinner-wrong'}">${nonWinnerCorrectForGame ? "correct" : "wrong"}</span></p>`;
+        }
+      }
+    }
+
     return `
       <div class="match-card">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px">
@@ -312,6 +352,7 @@ function renderResults(rows){
         <div class="match-result">${r.scoreA} - ${r.scoreB} · ${r.statusText}</div>
         <p class="note"><b>Pick:</b> ${pickText}</p>
         <p class="note"><b>Result:</b> ${r.completed ? (r.actual || "Final score loaded") : "Not final yet"}</p>
+        ${nonWinnerText}
         ${unmatched}
       </div>
     `;
